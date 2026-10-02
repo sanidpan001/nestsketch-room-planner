@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NestSketch — Free Room Layout Planner &amp; Furniture Arrangement Tool</title>
+<meta name="description" content="NestSketch is a free room layout planner: drag-and-drop furniture on a blueprint grid, check if your sofa fits, detect layout mistakes, get rug size recommendations, view walkway clearance heatmaps and export your plan as PNG. No signup.">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background:#0F2A43; }
+  .blueprint-bg {
+    background-color:#0F2A43;
+    background-image:
+      linear-gradient(rgba(127,212,255,.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(127,212,255,.07) 1px, transparent 1px);
+    background-size:26px 26px;
+  }
+  .panel { background:rgba(16,46,74,.92); border:1px solid rgba(127,212,255,.22); }
+  .cyan-text { color:#7FD4FF; }
+  #plan-canvas { touch-action:none; cursor:grab; }
+  #plan-canvas.dragging { cursor:grabbing; }
+  .chip-high { background:rgba(255,107,107,.16); color:#FF9B9B; border:1px solid rgba(255,107,107,.5); }
+  .chip-medium { background:rgba(255,184,107,.14); color:#FFC98A; border:1px solid rgba(255,184,107,.5); }
+  .chip-ok { background:rgba(80,200,140,.14); color:#7FE3AC; border:1px solid rgba(80,200,140,.5); }
+  input[type=number], input[type=text], select { background:#0B2138; border:1px solid rgba(127,212,255,.3); color:#EAF6FF; border-radius:.5rem; padding:.45rem .6rem; }
+  input[type=range] { accent-color:#7FD4FF; }
+  .faq-item { border:1px solid rgba(127,212,255,.22); background:rgba(16,46,74,.85); }
+  .no-print {}
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-track { background:#0B2138; }
+  ::-webkit-scrollbar-thumb { background:#2A5A86; border-radius:6px; }
+</style>
+</head>
+<body id="top" class="blueprint-bg text-slate-100 min-h-screen font-sans">
+
+<!-- Sticky header -->
+<header class="sticky top-0 z-50 border-b border-cyan-300/20" style="background:rgba(11,33,56,.96)">
+  <div class="mx-auto max-w-6xl px-4 sm:px-6 h-16 flex items-center justify-between">
+    <a href="#top" class="flex items-center gap-2.5">
+      <svg width="30" height="30" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <rect x="2" y="2" width="28" height="28" rx="6" stroke="#7FD4FF" stroke-width="2"/>
+        <path d="M8 22 L16 10 L24 22" stroke="#7FD4FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="16" cy="24.5" r="1.6" fill="#FF6B6B"/>
+      </svg>
+      <span class="text-xl font-bold tracking-tight cyan-text">NestSketch</span>
+    </a>
+    <nav class="flex items-center gap-5 text-sm font-medium">
+      <a href="#top" class="text-slate-200 hover:text-cyan-300 transition">Home</a>
+      <a href="https://fixoraa.tech" class="text-slate-200 hover:text-cyan-300 transition">More Tools</a>
+    </nav>
+  </div>
+</header>
+
+<!-- Hero -->
+<section class="mx-auto max-w-6xl px-4 sm:px-6 pt-10 pb-6 text-center">
+  <span class="inline-block text-xs font-semibold tracking-[0.2em] uppercase px-4 py-1.5 rounded-full border border-cyan-300/40 text-cyan-300 mb-5">Unlimited Free Usage &mdash; no signup, no paywall</span>
+  <h1 class="text-3xl sm:text-5xl font-extrabold leading-tight">Room Layout Planner <span class="cyan-text">&amp;</span> Furniture Arrangement Tool</h1>
+  <p class="mt-4 text-slate-300 max-w-2xl mx-auto text-base sm:text-lg">Draw your room to scale on a drafting grid, drag in real-size furniture, and let NestSketch flag layout mistakes, size your rug, and map your walkways &mdash; like an architect's blueprint, in your browser.</p>
+</section>
+
+<!-- TOP AD (verbatim) -->
+<div class="no-print mx-auto max-w-6xl px-4 sm:px-6 pt-4" role="complementary" aria-label="Advertisement">
+  <div class="mx-auto text-center" style="max-width:728px">
+    <span class="block text-[10px] tracking-[0.18em] uppercase text-slate-400 mb-1.5">Advertisement</span>
+    <div class="flex justify-center overflow-hidden">
+      <div class="origin-top scale-[0.44] sm:scale-100 shrink-0">
+        <script>
+          atOptions = { 'key' : '4e68ac77881c17fe128a46565d9a4e8c', 'format' : 'iframe', 'height' : 90, 'width' : 728, 'params' : {} };
+        </script>
+        <script src="https://www.highrevenueformat.com/4e68ac77881c17fe128a46565d9a4e8c/invoke.js"></script>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TOOL ============ -->
+<main class="mx-auto max-w-6xl px-4 sm:px-6 py-6">
+  <div id="tool-msg" class="hidden mb-4 text-sm px-4 py-3 rounded-lg border border-red-400/50 bg-red-500/10 text-red-200"></div>
+
+  <div class="grid lg:grid-cols-[1fr_330px] gap-5 items-start">
+
+    <!-- Left: controls + canvas -->
+    <div class="space-y-5">
+      <!-- Room setup -->
+      <section class="panel rounded-2xl p-4 sm:p-5">
+        <h2 class="text-lg font-bold cyan-text mb-3">1 &middot; Room dimensions</h2>
+        <div class="flex flex-wrap items-end gap-3">
+          <label class="text-sm">Width (ft)
+            <input id="room-w" type="number" min="4" max="60" step="0.5" value="14" class="block w-24 mt-1">
+          </label>
+          <label class="text-sm">Length (ft)
+            <input id="room-h" type="number" min="4" max="60" step="0.5" value="12" class="block w-24 mt-1">
+          </label>
+          <button id="apply-room" class="px-4 py-2 rounded-lg font-semibold text-sm" style="background:#7FD4FF;color:#0B2138">Apply</button>
+          <label class="text-sm">Preset
+            <select id="room-preset" class="block mt-1 text-sm">
+              <option value="">Custom&hellip;</option>
+              <option value="12x10">Small bedroom 12&times;10</option>
+              <option value="12x14">Bedroom 12&times;14</option>
+              <option value="14x12">Living room 14&times;12</option>
+              <option value="16x14">Large living room 16&times;14</option>
+              <option value="20x14">Open-plan studio 20&times;14</option>
+            </select>
+          </label>
+        </div>
+        <!-- Doors -->
+        <h3 class="text-sm font-bold text-slate-300 mt-5 mb-2">Doors (walkway + swing checks use these)</h3>
+        <div id="door-list" class="space-y-2"></div>
+        <button id="add-door" class="mt-2 text-sm px-3 py-1.5 rounded-lg border border-cyan-300/40 text-cyan-300 hover:bg-cyan-300/10">+ Add door</button>
+      </section>
+
+      <!-- Furniture palette -->
+      <section class="panel rounded-2xl p-4 sm:p-5">
+        <h2 class="text-lg font-bold cyan-text mb-1">2 &middot; Add furniture <span class="text-slate-400 font-normal text-sm">(real-world sizes, tap to add, then drag)</span></h2>
+        <div id="furniture-palette" class="flex flex-wrap gap-2 mt-3"></div>
+      </section>
+
+      <!-- Canvas -->
+      <section class="panel rounded-2xl p-4 sm:p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <h2 class="text-lg font-bold cyan-text">3 &middot; Arrange on the blueprint</h2>
+          <div class="flex items-center gap-4 text-sm">
+            <label class="flex items-center gap-1.5"><input type="checkbox" id="tgl-grid" checked class="accent-cyan-300"> Grid</label>
+            <label class="flex items-center gap-1.5"><input type="checkbox" id="tgl-heat" class="accent-cyan-300"> Walkway heatmap</label>
+          </div>
+        </div>
+        <div id="canvas-wrap" class="rounded-xl overflow-hidden border border-cyan-300/25" style="background:#0B2138">
+          <canvas id="plan-canvas" class="w-full block"></canvas>
+        </div>
+        <p class="text-xs text-slate-400 mt-2">Drag blocks to move them (snap: 3 in). Tap a block to resize or delete it. Red dashed outlines mark pieces caught by the mistake detector.</p>
+        <!-- Selected item editor -->
+        <div id="sel-editor" class="hidden mt-3 p-3 rounded-xl border border-cyan-300/30 bg-cyan-300/5">
+          <div class="flex flex-wrap items-center gap-3 text-sm">
+            <span class="font-bold cyan-text" id="sel-name">Item</span>
+            <label>Width (ft) <input id="sel-w" type="number" min="0.5" max="40" step="0.1" class="w-20 ml-1"></label>
+            <label>Length (ft) <input id="sel-h" type="number" min="0.5" max="40" step="0.1" class="w-20 ml-1"></label>
+            <button id="sel-apply" class="px-3 py-1.5 rounded-lg text-sm font-semibold" style="background:#7FD4FF;color:#0B2138">Resize</button>
+            <button id="sel-center" class="px-3 py-1.5 rounded-lg text-sm border border-cyan-300/40 text-cyan-300">Center</button>
+            <button id="sel-delete" class="px-3 py-1.5 rounded-lg text-sm font-semibold" style="background:#FF6B6B;color:#0B2138">Delete</button>
+          </div>
+        </div>
+        <!-- Plan actions -->
+        <div class="flex flex-wrap gap-2 mt-4">
+          <button id="btn-export" class="px-4 py-2 rounded-lg font-semibold text-sm" style="background:#7FD4FF;color:#0B2138">Export plan as PNG</button>
+          <button id="btn-save" class="px-4 py-2 rounded-lg text-sm border border-cyan-300/40 text-cyan-300">Save plan</button>
+          <button id="btn-load" class="px-4 py-2 rounded-lg text-sm border border-cyan-300/40 text-cyan-300">Load saved</button>
+          <button id="btn-reset" class="px-4 py-2 rounded-lg text-sm border border-red-400/50 text-red-300">Reset</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- Right: analysis panels -->
+    <aside class="space-y-5">
+      <section class="panel rounded-2xl p-4 sm:p-5">
+        <h2 class="text-lg font-bold cyan-text mb-2">Layout mistake detector</h2>
+        <div id="violations" class="space-y-2.5 text-sm"></div>
+      </section>
+
+      <section class="panel rounded-2xl p-4 sm:p-5">
+        <h2 class="text-lg font-bold cyan-text mb-2">Rug-size recommender</h2>
+        <div id="rug-card" class="text-sm space-y-2"></div>
+      </section>
+
+      <section class="panel rounded-2xl p-4 sm:p-5">
+        <h2 class="text-lg font-bold cyan-text mb-2">Openness score</h2>
+        <div class="flex items-end gap-2">
+          <span id="openness-num" class="text-4xl font-extrabold cyan-text">–</span>
+          <span class="text-sm text-slate-400 mb-1">% free floor area</span>
+        </div>
+        <div class="h-2.5 rounded-full bg-slate-700/60 mt-2 overflow-hidden">
+          <div id="openness-bar" class="h-full rounded-full" style="width:0%;background:linear-gradient(90deg,#FF6B6B,#FFB86B,#7FD4FF)"></div>
+        </div>
+        <p id="openness-label" class="text-sm text-slate-300 mt-2"></p>
+      </section>
+
+      <section class="panel rounded-2xl p-4 sm:p-5 text-sm text-slate-300">
+        <h2 class="text-lg font-bold cyan-text mb-2">Reading the heatmap</h2>
+        <p>Toggle <strong class="text-slate-100">Walkway heatmap</strong> above the plan. <span style="color:#FF6B6B">Red zones</span> are cramped or blocked; clear areas fade out. Aim for cool, open lanes connecting the door to the sofa, table and bed.</p>
+      </section>
+    </aside>
+  </div>
+</main>
+
+<!-- BOTTOM AD (verbatim) -->
+<div class="no-print mx-auto max-w-6xl px-4 sm:px-6 pb-4" role="complementary" aria-label="Advertisement">
+  <div class="mx-auto text-center" style="max-width:728px">
+    <span class="block text-[10px] tracking-[0.18em] uppercase text-slate-400 mb-1.5">Advertisement</span>
+    <div class="flex justify-center overflow-hidden">
+      <script async src="https://js.wpadmngr.com/static/adManager.js" data-admpid="464498"></script>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SEO ARTICLE ============ -->
+<article id="seo-article" class="mx-auto max-w-4xl px-4 sm:px-6 py-10 text-slate-300 leading-relaxed">
+  <h2 class="text-2xl font-bold text-slate-100 mb-4">What Is a Room Layout Planner?</h2>
+  <p class="mb-4">A room layout planner is a scale-drawing tool that lets you arrange furniture in a room before you lift a single heavy object. Instead of guessing whether the new sectional will fit, you draw your room's exact dimensions, drop in furniture blocks sized to real-world measurements, and shuffle them around until the plan works. NestSketch takes the idea further: it is a furniture arrangement tool with a built-in second opinion. As you drag pieces across the blueprint grid, a rule-based mistake detector watches for the errors real people make every day — blocked walkways, televisions parked too close to the sofa, dining chairs with nowhere to pull out, and door swings that smack into bookshelves.</p>
+  <p class="mb-6">Everything runs in your browser. There is no account to create, no trial to expire, and no watermark stamped on your plan. When the layout feels right, you can export it as a PNG and take it to the store, send it to a partner, or hand it to a mover. Think of it as graph paper that does the math for you.</p>
+
+  <h2 class="text-2xl font-bold text-slate-100 mb-4">Will My Sofa Fit? Measure Before You Buy</h2>
+  <p class="mb-4">The most searched question in furniture planning is also the simplest: will my sofa fit? The answer has two parts. First, the sofa must fit through your doors, hallways, and stairwells on delivery day — measure the narrowest point of that route, not just the room. A 7-foot sofa will not turn a 3-foot hallway corner, no matter how spacious the living room is. Second, the sofa must fit the room with its clearances intact. A sofa needs roughly 18 inches of walkway in front of it for a coffee table zone, or 30 to 36 inches if people walk past it regularly.</p>
+  <p class="mb-4">In NestSketch, every furniture block carries realistic default dimensions: a standard three-seat sofa is 7 by 3 feet, a loveseat is 5 by 2.8 feet, a queen bed is 5 by 6.7 feet. Select any block to type in the exact measurements from the product page you are considering. If the piece hangs over the room boundary, the planner clamps it back inside and tells you it does not fit. That is your will-my-sofa-fit calculator, answered visually instead of with a tape measure and wishful thinking.</p>
+  <p class="mb-6">One more tip from delivery drivers: measure diagonally. A sofa's diagonal depth is often smaller than its width, which is why some pieces fit through a doorway when tilted even though the width suggests otherwise. Plan the room first, then plan the route in.</p>
+
+  <h2 class="text-2xl font-bold text-slate-100 mb-4">The Walkway Rules Every Room Must Follow</h2>
+  <p class="mb-4">Interior designers return to the same handful of clearance numbers because human bodies do not change size. The main walkway through a room — the path from the door to the seating area, or from the kitchen to the dining table — needs 30 to 36 inches of clear width. That is enough for one person to walk comfortably and for two people to pass without turning sideways. Secondary paths, like the gap between a bed and a wall you only use on one side, can shrink to 24 inches. Anything under 18 inches is not a walkway; it is a squeeze.</p>
+  <p class="mb-4">This is where most DIY layouts fail. People push furniture against walls to "open up" the room, then discover the only route to the window threads between the coffee table and the TV stand with inches to spare. NestSketch checks every pair of furniture pieces and flags gaps under 18 inches as tight passages, explaining in plain English which two pieces are the problem and how much space a comfortable lane needs. It also guards the entry: a 3.5-foot-wide corridor running 4 feet in from each door must stay clear, because the first thing you do in any room is walk into it.</p>
+  <p class="mb-6">Turn on the walkway heatmap to see these rules as color. The planner computes, for every half-foot square of your floor, how far it is from the nearest furniture. Squares inside furniture or pressed against it glow red; squares with three or more feet of breathing room fade away. A good plan shows cool, open lanes connecting the door to every seat and the table.</p>
+
+  <h2 class="text-2xl font-bold text-slate-100 mb-4">Sofa-to-TV Distance: The 6-to-8-Foot Rule</h2>
+  <p class="mb-4">Sit too close to a big screen and you will crane your neck and see pixels; sit too far and the movie feels distant. The widely used guideline is 1.5 to 2.5 times the screen's diagonal measurement. For the common 55-to-65-inch television, that lands at roughly 6 to 8 feet between the screen and your eyes — which, on a floor plan, means between the front of the TV console and the front edge of the sofa.</p>
+  <p class="mb-6">NestSketch measures that edge-to-edge distance automatically whenever your plan contains a sofa and a TV console. Drop below 6 feet and the mistake detector flags it with the exact current distance, so you can nudge the sofa back or reconsider the screen size. Small rooms sometimes force a compromise; knowing the number lets you compromise deliberately instead of discovering the problem after the wall mount is drilled in.</p>
+
+  <h2 class="text-2xl font-bold text-slate-100 mb-4">Dining Chairs Need 36 Inches Behind Them</h2>
+  <p class="mb-4">A dining chair is not 20 inches deep — it is 20 inches deep plus the space a human needs to push back, stand, and walk away. That working depth is about 36 inches from the table's edge. Forget it and you get the classic dining-room comedy: guests wedged between the table and the sideboard, performing an awkward sideways shuffle every time someone needs the restroom.</p>
+  <p class="mb-6">The planner handles this with a directional check. When a chair sits tucked against a table, NestSketch projects a 3-foot pull-out zone behind the chair — on the side facing away from the table — and looks for walls or furniture inside it. If the sideboard blocks the zone, or the wall is too close, you get a plain-English warning naming the blocker. Slide the table toward the room's center or choose a narrower sideboard, and the warning clears.</p>
+
+  <h2 class="text-2xl font-bold text-slate-100 mb-4">Door Swings: The Forgotten Collision Zone</h2>
+  <p class="mb-4">Every hinged door sweeps a quarter-circle with a radius equal to the door's width — typically 3 feet. Furniture placed inside that arc gets hit, blocks the door, or forces you to squeeze through a half-open doorway for the life of the room. It is one of the most common layout mistakes because the arc is invisible once the door is open against the wall.</p>
+  <p class="mb-6">Add your doors in the room setup panel — pick the wall, slide the position, set the width — and NestSketch draws the swing arc as a dashed red quarter-circle on the blueprint. Any furniture overlapping the arc triggers a high-severity warning. Pocket doors and outward-swinging doors are exempt: set the swing to "out" and the check is skipped, which is itself a useful design trick if a swing keeps colliding with pieces you love.</p>
+
+  <h2 class="text-2xl font-bold text-slate-100 mb-4">What Size Rug Should You Buy?</h2>
+  <p class="mb-4">Rug sizing has a simple professional rule: the rug should be large enough that the front legs of every seat in the arrangement sit on it, with about 18 inches of rug extending beyond the furniture on each side. A rug that is too small looks like a postage stamp floating under the coffee table; it visually shrinks the room instead of anchoring it. In a living room with a 7-foot sofa and two chairs, that rule usually points to an 8-by-10-foot rug, and larger seating groups step up to 9-by-12.</p>
+  <p class="mb-4">NestSketch computes this from your actual plan. It takes the bounding box of your seating zone — sofa, chairs, coffee table — adds 18 inches per side, and recommends the smallest standard rug size (5x7, 6x9, 8x10, 9x12, or 10x14) that covers it and fits your room. One tap adds the recommended rug to the plan so you can see it in place.</p>
+  <p class="mb-6">If your plan already contains a rug, the recommender grades it: either confirming it is a good size for the zone or telling you exactly which size to trade up to. Rug regret is one of the most common furniture returns; a thirty-second check here can save a two-hundred-dollar mistake.</p>
+
+  <h2 class="text-2xl font-bold text-slate-100 mb-4">What Is a Good Openness Score?</h2>
+  <p class="mb-4">The openness score is the percentage of your floor area not covered by furniture. Rugs do not count — you walk on rugs, so they do not reduce usable floor. A score above 65 feels airy, with generous lanes between pieces. Between 45 and 65 is the comfortable middle most living rooms land in. Below 45 the room starts feeling full, and under 30 it is genuinely crowded: movement gets awkward no matter how nicely the pieces are arranged.</p>
+  <p class="mb-6">Use the score as a reality check when comparing two arrangements of the same room. If version A scores 58 and version B scores 41 with the same furniture, version B has pieces sprawled inefficiently — usually a sign that something belongs against a different wall or that one piece too many is in the mix.</p>
+
+  <h2 class="text-2xl font-bold text-slate-100 mb-4">Small Room Layout Tricks That Actually Work</h2>
+  <p class="mb-4">Small rooms punish every wasted inch, so the standard advice is to reduce the number of pieces, not just their size. One 7-foot sofa beats a loveseat plus two bulky armchairs because it leaves longer uninterrupted walkways. Choose furniture with visible legs: seeing floor underneath a sofa makes a room read larger even when the footprint is identical. Round dining tables seat the same number of people as square ones with no sharp corners jutting into walkways.</p>
+  <p class="mb-6">On the plan, test the two classic small-room moves. First, float the sofa: pulling it even 6 inches off the wall can open a walkway behind it that transforms circulation. Second, merge zones — a desk behind the sofa can double as a console table, removing a whole piece from the footprint. Watch the openness score climb as you experiment, and let the heatmap confirm the lanes stay genuinely walkable.</p>
+
+  <h2 class="text-2xl font-bold text-slate-100 mb-4">How to Use NestSketch in Five Minutes</h2>
+  <p class="mb-4">Set your room's width and length, or pick a preset, then add your doors on the correct walls. Tap furniture blocks to add them — each arrives at its real-world size — and drag them into place; they snap to a 3-inch grid and cannot leave the room. Tap any block to fine-tune its exact width and length from the product listing. Read the mistake detector panel as you go: green means the plan follows standard clearance rules, and each warning explains the problem in plain English with the measurements involved.</p>
+  <p class="mb-4">When the layout settles, check the rug recommender, glance at your openness score, and toggle the heatmap for a final walkway review. Save the plan to your browser for later tweaks, and export a PNG when you are ready to shop, share, or hand it to someone with a drill. Five minutes of planning beats five years of squeezing past the sideboard.</p>
+</article>
+
+<!-- ============ FAQs ============ -->
+<section class="mx-auto max-w-4xl px-4 sm:px-6 pb-12">
+  <h2 class="text-2xl font-bold text-slate-100 mb-5">Frequently asked questions</h2>
+  <div class="space-y-3 text-slate-300">
+    <div class="faq-item rounded-xl p-4">
+      <h3 class="font-bold text-slate-100 mb-1">Will my sofa fit in my room?</h3>
+      <p class="text-sm">Add a sofa block in NestSketch, select it, and type the exact width and depth from the product page. If the piece cannot fit inside your room's dimensions with its clearances, the planner clamps it at the boundary and the mistake detector tells you what is wrong. Remember to also measure your doorways and hallways for delivery day.</p>
+    </div>
+    <div class="faq-item rounded-xl p-4">
+      <h3 class="font-bold text-slate-100 mb-1">How much walkway clearance do I need between furniture?</h3>
+      <p class="text-sm">Plan 30 to 36 inches for main walkways (door to sofa, kitchen to table), 24 inches for secondary paths, and never less than 18 inches anywhere people walk. NestSketch flags any gap under 18 inches as a tight passage and keeps a 3.5-foot corridor clear in front of every door.</p>
+    </div>
+    <div class="faq-item rounded-xl p-4">
+      <h3 class="font-bold text-slate-100 mb-1">What size rug should I buy for my living room?</h3>
+      <p class="text-sm">Choose a rug large enough that the front legs of the sofa and all chairs sit on it, with about 18 inches of rug beyond the furniture on each side — usually 8x10 ft for a standard seating group. NestSketch's rug recommender computes this from your actual furniture footprint and picks the right standard size.</p>
+    </div>
+    <div class="faq-item rounded-xl p-4">
+      <h3 class="font-bold text-slate-100 mb-1">How far should my sofa be from the TV?</h3>
+      <p class="text-sm">Keep 6 to 8 feet between the sofa and the screen for a 55 to 65-inch TV (roughly 1.5 to 2.5 times the screen diagonal). The mistake detector measures your plan's edge-to-edge sofa-to-TV distance and warns you if it drops under 6 feet.</p>
+    </div>
+    <div class="faq-item rounded-xl p-4">
+      <h3 class="font-bold text-slate-100 mb-1">How much space do dining chairs need behind them?</h3>
+      <p class="text-sm">Allow 36 inches from the table's edge so people can push back, stand, and walk away. NestSketch projects a 3-foot pull-out zone behind each tucked-in chair and flags walls or furniture that intrude into it.</p>
+    </div>
+    <div class="faq-item rounded-xl p-4">
+      <h3 class="font-bold text-slate-100 mb-1">Is this room layout planner really free?</h3>
+      <p class="text-sm">Yes. NestSketch is free with unlimited usage — no signup, no trial, no paywall, and no watermark on your exported PNG. Your plans are saved only in your own browser's local storage.</p>
+    </div>
+  </div>
+</section>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "Will my sofa fit in my room?", "acceptedAnswer": { "@type": "Answer", "text": "Add a sofa block in NestSketch, select it, and type the exact width and depth from the product page. If the piece cannot fit inside your room's dimensions with its clearances, the planner clamps it at the boundary and the mistake detector tells you what is wrong. Remember to also measure your doorways and hallways for delivery day." } },
+    { "@type": "Question", "name": "How much walkway clearance do I need between furniture?", "acceptedAnswer": { "@type": "Answer", "text": "Plan 30 to 36 inches for main walkways (door to sofa, kitchen to table), 24 inches for secondary paths, and never less than 18 inches anywhere people walk. NestSketch flags any gap under 18 inches as a tight passage and keeps a 3.5-foot corridor clear in front of every door." } },
+    { "@type": "Question", "name": "What size rug should I buy for my living room?", "acceptedAnswer": { "@type": "Answer", "text": "Choose a rug large enough that the front legs of the sofa and all chairs sit on it, with about 18 inches of rug beyond the furniture on each side — usually 8x10 ft for a standard seating group. NestSketch's rug recommender computes this from your actual furniture footprint and picks the right standard size." } },
+    { "@type": "Question", "name": "How far should my sofa be from the TV?", "acceptedAnswer": { "@type": "Answer", "text": "Keep 6 to 8 feet between the sofa and the screen for a 55 to 65-inch TV (roughly 1.5 to 2.5 times the screen diagonal). The mistake detector measures your plan's edge-to-edge sofa-to-TV distance and warns you if it drops under 6 feet." } },
+    { "@type": "Question", "name": "How much space do dining chairs need behind them?", "acceptedAnswer": { "@type": "Answer", "text": "Allow 36 inches from the table's edge so people can push back, stand, and walk away. NestSketch projects a 3-foot pull-out zone behind each tucked-in chair and flags walls or furniture that intrude into it." } },
+    { "@type": "Question", "name": "Is this room layout planner really free?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. NestSketch is free with unlimited usage — no signup, no trial, no paywall, and no watermark on your exported PNG. Your plans are saved only in your own browser's local storage." } }
+  ]
+}
+</script>
+
+<footer class="border-t border-cyan-300/20 py-8 text-center text-sm text-slate-400">
+  <p class="font-semibold cyan-text text-base mb-1">NestSketch</p>
+  <p>Free room layout planner &amp; furniture arrangement tool. Plans never leave your browser.</p>
+</footer>
+
+<!-- Pure geometry lib (inlined at build time) -->
+<script id="nestsketch-room-planner-lib">
+/* ============================================================================
+ * NestSketch — Room Layout Planner : pure geometry library
+ * ----------------------------------------------------------------------------
+ * ALL functions here are pure: no DOM, no window, no document, no
+ * localStorage, no canvas. Units are FEET (decimals allowed).
+ *
+ * Data shapes:
+ *   room  = { w: <feet>, h: <feet> }
+ *   item  = { id, type, label, w, h, x, y }   // x,y = top-left corner in feet
+ *   door  = { wall: 'N'|'S'|'E'|'W', at: <feet along wall>, width: <feet>,
+ *             swing: 'in'|'out' }
+ * ========================================================================== */
+
+var NS_SNAP_GRID = 0.25;      // feet — drag snap increment
+var NS_WALKWAY_MIN = 2.5;     // feet — recommended main walkway width
+var NS_TIGHT_GAP = 1.5;       // feet — below this a gap feels cramped
+var NS_SOFA_TV_MIN = 6;       // feet — minimum comfortable sofa-to-TV distance
+var NS_CHAIR_PULL_OUT = 3;    // feet (36 in) — clearance needed behind a chair
+var NS_RUG_SIZES = [[5, 7], [6, 9], [8, 10], [9, 12], [10, 14]]; // standard rugs
+
+/* ---------------------------------------------------------------- catalog */
+function nsFurnitureTypes() {
+  return [
+    { type: 'sofa',        label: 'Sofa',          w: 7,   h: 3,   color: '#7FD4FF' },
+    { type: 'loveseat',    label: 'Loveseat',      w: 5,   h: 2.8, color: '#5FB8E8' },
+    { type: 'bed',         label: 'Queen Bed',     w: 5,   h: 6.7, color: '#9BB8FF' },
+    { type: 'diningTable', label: 'Dining Table',  w: 5,   h: 3,   color: '#FFB86B' },
+    { type: 'coffeeTable', label: 'Coffee Table',  w: 4,   h: 2,   color: '#FFC98A' },
+    { type: 'chair',       label: 'Dining Chair',  w: 1.7, h: 1.7, color: '#FFD6A5' },
+    { type: 'tv',          label: 'TV Console',    w: 5,   h: 1.5, color: '#FF6B6B' },
+    { type: 'bookshelf',   label: 'Bookshelf',     w: 3,   h: 1,   color: '#B8A6FF' },
+    { type: 'desk',        label: 'Desk',          w: 4,   h: 2,   color: '#8FE3C0' },
+    { type: 'dresser',     label: 'Dresser',       w: 5,   h: 1.7, color: '#E8A0BF' },
+    { type: 'rug',         label: 'Rug',           w: 8,   h: 10,  color: '#3E6E96' }
+  ];
+}
+
+/* ------------------------------------------------------------------ basics */
+function nsSnap(v, grid) {
+  grid = grid || NS_SNAP_GRID;
+  return Math.round(v / grid) * grid;
+}
+
+function nsIsRug(item) {
+  return item.type === 'rug';
+}
+
+function nsRectsOverlap(a, b, pad) {
+  pad = pad || 0;
+  return (a.x - pad) < (b.x + b.w) &&
+         (a.x + a.w + pad) > b.x &&
+         (a.y - pad) < (b.y + b.h) &&
+         (a.y + a.h + pad) > b.y;
+}
+
+/* Edge-to-edge distance between two rects (0 when they touch/overlap). */
+function nsRectDistance(a, b) {
+  var dx = Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w), 0);
+  var dy = Math.max(b.y - (a.y + a.h), a.y - (b.y + b.h), 0);
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function nsCircleRectOverlap(cx, cy, r, rect) {
+  var nx = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+  var ny = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+  var dx = cx - nx, dy = cy - ny;
+  return (dx * dx + dy * dy) <= r * r;
+}
+
+function nsFitsInRoom(item, room) {
+  var e = 1e-9;
+  return item.x >= -e && item.y >= -e &&
+         item.x + item.w <= room.w + e &&
+         item.y + item.h <= room.h + e;
+}
+
+function nsClampToRoom(item, room) {
+  var x = Math.min(Math.max(item.x, 0), Math.max(room.w - item.w, 0));
+  var y = Math.min(Math.max(item.y, 0), Math.max(room.h - item.h, 0));
+  return {
+    id: item.id, type: item.type, label: item.label,
+    w: item.w, h: item.h,
+    x: nsSnap(x), y: nsSnap(y)
+  };
+}
+
+function nsArea(item) {
+  return item.w * item.h;
+}
+
+/* 6.33 -> "6 ft 4 in" */
+function nsFmtFt(v) {
+  var ft = Math.floor(v + 1e-9);
+  var inch = Math.round((v - ft) * 12);
+  if (inch === 12) { ft += 1; inch = 0; }
+  if (inch === 0) return ft + ' ft';
+  return ft + ' ft ' + inch + ' in';
+}
+
+/* ------------------------------------------------------------------- doors */
+function nsDoorHinge(door, room) {
+  if (door.wall === 'N') return { x: door.at, y: 0 };
+  if (door.wall === 'S') return { x: door.at, y: room.h };
+  if (door.wall === 'W') return { x: 0, y: door.at };
+  return { x: room.w, y: door.at }; /* 'E' */
+}
+
+/* 3.5 ft wide strip, 4 ft deep, running inward from the door. */
+function nsDoorCorridor(door, room) {
+  var hw = 1.75, depth = 4;
+  if (door.wall === 'N') return { x: door.at - hw, y: 0, w: hw * 2, h: depth };
+  if (door.wall === 'S') return { x: door.at - hw, y: room.h - depth, w: hw * 2, h: depth };
+  if (door.wall === 'W') return { x: 0, y: door.at - hw, w: depth, h: hw * 2 };
+  return { x: room.w - depth, y: door.at - hw, w: depth, h: hw * 2 }; /* 'E' */
+}
+
+/* True when the rect's centre lies on the inward side of the hinge. */
+function nsInSwingHalf(door, hinge, rect) {
+  var cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2;
+  if (door.wall === 'N') return cy > hinge.y;
+  if (door.wall === 'S') return cy < hinge.y;
+  if (door.wall === 'W') return cx > hinge.x;
+  return cx < hinge.x; /* 'E' */
+}
+
+/* ------------------------------------------------------- mistake detector */
+function nsClearanceViolations(items, room, doors) {
+  items = items || [];
+  doors = doors || [];
+  var out = [];
+  var solid = items.filter(function (i) { return !nsIsRug(i); });
+  var a, b;
+
+  /* 1. Furniture collisions */
+  for (a = 0; a < solid.length; a++) {
+    for (b = a + 1; b < solid.length; b++) {
+      if (nsRectsOverlap(solid[a], solid[b], 0.02)) {
+        out.push({
+          rule: 'collision', severity: 'high',
+          items: [solid[a].id, solid[b].id],
+          message: solid[a].label + ' overlaps ' + solid[b].label +
+            '. Two pieces of furniture cannot share the same floor space — drag one of them clear.'
+        });
+      }
+    }
+  }
+
+  /* 2. Blocked entry walkway */
+  doors.forEach(function (d) {
+    var c = nsDoorCorridor(d, room);
+    solid.forEach(function (it) {
+      if (nsRectsOverlap(it, c, 0.02)) {
+        out.push({
+          rule: 'blocked-walkway', severity: 'high',
+          items: [it.id],
+          message: it.label + ' sits in the entry walkway from the door. Keep a clear ' +
+            nsFmtFt(3.5) + ' path so people have a straight, unobstructed route when they walk in.'
+        });
+      }
+    });
+  });
+
+  /* 3. Tight passages between furniture */
+  for (a = 0; a < solid.length; a++) {
+    for (b = a + 1; b < solid.length; b++) {
+      var gap = nsRectDistance(solid[a], solid[b]);
+      if (gap > 0.02 && gap < NS_TIGHT_GAP) {
+        out.push({
+          rule: 'tight-passage', severity: 'medium',
+          items: [solid[a].id, solid[b].id],
+          message: 'Only ' + nsFmtFt(gap) + ' between ' + solid[a].label + ' and ' + solid[b].label +
+            '. Main walkways need at least ' + nsFmtFt(NS_WALKWAY_MIN) +
+            '; anything under 18 in feels cramped and snags hips, laundry baskets and vacuum cleaners.'
+        });
+      }
+    }
+  }
+
+  /* 4. Sofa too close to the TV */
+  var sofas = solid.filter(function (i) { return i.type === 'sofa' || i.type === 'loveseat'; });
+  var tvs = solid.filter(function (i) { return i.type === 'tv'; });
+  sofas.forEach(function (s) {
+    tvs.forEach(function (t) {
+      var d = nsRectDistance(s, t);
+      if (d < NS_SOFA_TV_MIN) {
+        out.push({
+          rule: 'sofa-tv-distance', severity: 'medium',
+          items: [s.id, t.id],
+          message: 'Your sofa is only ' + nsFmtFt(d) + ' from the TV. For comfortable viewing keep ' +
+            nsFmtFt(NS_SOFA_TV_MIN) + '–8 ft between the sofa and the screen (roughly 1.5–2.5x the screen diagonal).'
+        });
+      }
+    });
+  });
+
+  /* 5. Dining-chair pull-out clearance */
+  var chairs = solid.filter(function (i) { return i.type === 'chair'; });
+  var tables = solid.filter(function (i) { return i.type === 'table' || i.type === 'diningTable'; });
+  chairs.forEach(function (ch) {
+    tables.forEach(function (tb) {
+      if (nsRectDistance(ch, tb) < 1.2) {
+        var tccx = tb.x + tb.w / 2, tccy = tb.y + tb.h / 2;
+        var ccx = ch.x + ch.w / 2, ccy = ch.y + ch.h / 2;
+        var dx = ccx - tccx, dy = ccy - tccy;
+        var need = NS_CHAIR_PULL_OUT, probe;
+        if (Math.abs(dx) >= Math.abs(dy)) {
+          probe = dx >= 0
+            ? { x: ch.x + ch.w, y: ch.y, w: need, h: ch.h }
+            : { x: ch.x - need, y: ch.y, w: need, h: ch.h };
+        } else {
+          probe = dy >= 0
+            ? { x: ch.x, y: ch.y + ch.h, w: ch.w, h: need }
+            : { x: ch.x, y: ch.y - need, w: ch.w, h: need };
+        }
+        if (probe.x < 0 || probe.y < 0 ||
+            probe.x + probe.w > room.w || probe.y + probe.h > room.h) {
+          out.push({
+            rule: 'chair-pullout', severity: 'medium',
+            items: [ch.id],
+            message: ch.label + ' is tucked at the table but has less than ' + nsFmtFt(need) +
+              ' of pull-out room behind it — a wall is in the way. Dining chairs need about 3 ft (36 in) ' +
+              'behind them so people can slide back and stand up.'
+          });
+        } else {
+          var blocker = null;
+          solid.forEach(function (o) {
+            if (o.id !== ch.id && o.id !== tb.id && nsRectsOverlap(probe, o, 0.02)) blocker = o;
+          });
+          if (blocker) {
+            out.push({
+              rule: 'chair-pullout', severity: 'medium',
+              items: [ch.id, blocker.id],
+              message: blocker.label + ' blocks the pull-out space behind ' + ch.label +
+                '. Dining chairs need about 3 ft (36 in) of clear space behind them so people can slide back and stand up.'
+            });
+          }
+        }
+      }
+    });
+  });
+
+  /* 6. Door-swing collisions */
+  doors.forEach(function (d) {
+    if (d.swing === 'out') return;
+    var hinge = nsDoorHinge(d, room);
+    var r = d.width || 3;
+    solid.forEach(function (it) {
+      if (nsCircleRectOverlap(hinge.x, hinge.y, r, it) && nsInSwingHalf(d, hinge, it)) {
+        out.push({
+          rule: 'door-swing', severity: 'high',
+          items: [it.id],
+          message: 'The door swing hits ' + it.label + '. A standard door needs its full swing arc clear — ' +
+            'move the piece at least ' + nsFmtFt(r) + ' away from the hinge corner.'
+        });
+      }
+    });
+  });
+
+  return out;
+}
+
+/* ---------------------------------------------------------- rug recommender */
+function nsRecommendRug(items, room) {
+  items = items || [];
+  var zone = items.filter(function (i) {
+    return i.type === 'sofa' || i.type === 'loveseat' ||
+           i.type === 'chair' || i.type === 'coffeeTable';
+  });
+  var needW, needH, basis;
+  if (zone.length) {
+    var x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    zone.forEach(function (i) {
+      x1 = Math.min(x1, i.x); y1 = Math.min(y1, i.y);
+      x2 = Math.max(x2, i.x + i.w); y2 = Math.max(y2, i.y + i.h);
+    });
+    /* Rug should extend ~18 in beyond the furniture on every side. */
+    needW = (x2 - x1) + 3;
+    needH = (y2 - y1) + 3;
+    basis = 'your seating footprint';
+  } else {
+    needW = Math.min(room.w, room.h) * 0.7;
+    needH = Math.min(room.w, room.h) * 0.7;
+    basis = 'your room size';
+  }
+
+  function fitsRoom(s) {
+    return (s[0] <= room.w - 1 && s[1] <= room.h - 1) ||
+           (s[1] <= room.w - 1 && s[0] <= room.h - 1);
+  }
+  function covers(s) {
+    return (s[0] >= needW && s[1] >= needH) ||
+           (s[1] >= needW && s[0] >= needH);
+  }
+
+  var pick = null, i;
+  for (i = 0; i < NS_RUG_SIZES.length; i++) {
+    if (covers(NS_RUG_SIZES[i]) && fitsRoom(NS_RUG_SIZES[i])) { pick = NS_RUG_SIZES[i]; break; }
+  }
+  if (!pick) {
+    for (i = NS_RUG_SIZES.length - 1; i >= 0; i--) {
+      if (fitsRoom(NS_RUG_SIZES[i])) { pick = NS_RUG_SIZES[i]; break; }
+    }
+  }
+  if (!pick) pick = [5, 7];
+
+  /* Orient the rug so it actually covers the needed footprint. */
+  var w = pick[0], h = pick[1];
+  if (!(w >= needW && h >= needH) && (h >= needW && w >= needH)) { w = pick[1]; h = pick[0]; }
+
+  var note = 'Based on ' + basis + ' (' + nsFmtFt(needW) + ' x ' + nsFmtFt(needH) +
+    ' with 18 in of breathing room on each side), the smallest standard rug that fits is ' +
+    w + ' x ' + h + ' ft. All front legs of the sofa and chairs should sit on the rug.';
+
+  var existingRugNote = '';
+  var rugs = items.filter(nsIsRug);
+  if (rugs.length) {
+    var rg = rugs[0];
+    var ok = (rg.w >= needW && rg.h >= needH) || (rg.h >= needW && rg.w >= needH);
+    if (!ok) {
+      existingRugNote = 'Your current ' + rg.w + ' x ' + rg.h + ' ft rug is smaller than the seating zone — ' +
+        'size up to ' + w + ' x ' + h + ' ft so the rug anchors the furniture instead of floating under it.';
+    } else {
+      existingRugNote = 'Your current ' + rg.w + ' x ' + rg.h + ' ft rug is a good size for this seating zone.';
+    }
+  }
+
+  return { width: w, length: h, needW: Math.round(needW * 10) / 10, needH: Math.round(needH * 10) / 10,
+           note: note, existingRugNote: existingRugNote };
+}
+
+/* --------------------------------------------------------- walkway heatmap */
+/* Returns { cols, rows, cell, values } — values[r][c] in [0,1]:
+ * 0 = inside furniture (blocked), 1 = 3+ ft of clearance (open). */
+function nsHeatmapGrid(items, room, cell) {
+  items = items || [];
+  cell = cell || 0.5;
+  var cols = Math.max(1, Math.ceil(room.w / cell));
+  var rows = Math.max(1, Math.ceil(room.h / cell));
+  var solid = items.filter(function (i) { return !nsIsRug(i); });
+  var values = [];
+  for (var r = 0; r < rows; r++) {
+    var row = [];
+    for (var c = 0; c < cols; c++) {
+      var cx = (c + 0.5) * cell, cy = (r + 0.5) * cell;
+      var inside = false, dMin = Infinity, k;
+      for (k = 0; k < solid.length; k++) {
+        var it = solid[k];
+        if (cx >= it.x && cx <= it.x + it.w && cy >= it.y && cy <= it.y + it.h) { inside = true; break; }
+        var d = nsRectDistance({ x: cx, y: cy, w: 0, h: 0 }, it);
+        if (d < dMin) dMin = d;
+      }
+      var v = inside ? 0 : (solid.length ? Math.min(dMin / 3, 1) : 1);
+      row.push(Math.round(v * 100) / 100);
+    }
+    values.push(row);
+  }
+  return { cols: cols, rows: rows, cell: cell, values: values };
+}
+
+/* ------------------------------------------------------------ openness score */
+/* % of floor area that is free (rugs don't count — you walk on them). */
+function nsOpennessScore(items, room) {
+  items = items || [];
+  var occ = 0;
+  items.forEach(function (i) { if (!nsIsRug(i)) occ += i.w * i.h; });
+  var roomA = room.w * room.h;
+  var pct = roomA > 0 ? (1 - occ / roomA) * 100 : 0;
+  return Math.round(Math.max(0, Math.min(100, pct)) * 10) / 10;
+}
+
+function nsOpennessLabel(score) {
+  if (score >= 65) return 'Airy — plenty of open floor, easy movement.';
+  if (score >= 45) return 'Balanced — comfortable without feeling empty.';
+  if (score >= 30) return 'Cozy — full but workable; watch the walkways.';
+  return 'Crowded — consider removing a piece or choosing smaller furniture.';
+}
+
+</script>
+
+<!-- UI logic -->
+<script>
+(function () {
+  'use strict';
+  var M = 0.9; // blueprint margin around the room, in feet
+  var TYPES = nsFurnitureTypes();
+  var typeByName = {};
+  TYPES.forEach(function (t) { typeByName[t.type] = t; });
+
+  var canvas = document.getElementById('plan-canvas');
+  var ctx = canvas.getContext('2d');
+  var wrap = document.getElementById('canvas-wrap');
+  var msgBox = document.getElementById('tool-msg');
+
+  function defaultState() {
+    return {
+      room: { w: 14, h: 12 },
+      doors: [{ wall: 'N', at: 12, width: 3, swing: 'in' }],
+      items: [
+        { id: 'it-rug',   type: 'rug',         label: 'Rug',          w: 8, h: 10,  x: 1,     y: 1 },
+        { id: 'it-sofa',  type: 'sofa',        label: 'Sofa',         w: 7, h: 3,   x: 2,     y: 1.5 },
+        { id: 'it-coffee',type: 'coffeeTable', label: 'Coffee Table', w: 4, h: 2,   x: 3.5,   y: 6.5 },
+        { id: 'it-tv',    type: 'tv',          label: 'TV Console',   w: 5, h: 1.5, x: 2.5,   y: 10.5 },
+        { id: 'it-shelf', type: 'bookshelf',   label: 'Bookshelf',    w: 3, h: 1,   x: 10.75, y: 5.5 }
+      ],
+      selected: null,
+      showHeat: false,
+      showGrid: true,
+      nextId: 100
+    };
+  }
+  var state = defaultState();
+
+  /* ---------------- helpers ---------------- */
+  function showMsg(text) {
+    msgBox.textContent = text;
+    msgBox.classList.remove('hidden');
+    clearTimeout(showMsg._t);
+    showMsg._t = setTimeout(function () { msgBox.classList.add('hidden'); }, 4500);
+  }
+  function ft(v) { return nsFmtFt(v); }
+  function getItem(id) {
+    for (var i = 0; i < state.items.length; i++) if (state.items[i].id === id) return state.items[i];
+    return null;
+  }
+  function wallLen(wall) { return (wall === 'N' || wall === 'S') ? state.room.w : state.room.h; }
+
+  /* ---------------- canvas sizing ---------------- */
+  var S = 40; // px per foot (drawing scale, includes dpr)
+  function fitCanvas() {
+    var W = wrap.clientWidth || 600;
+    var dpr = window.devicePixelRatio || 1;
+    var base = W / (state.room.w + 2 * M);
+    S = base * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = Math.round((state.room.h + 2 * M) * base) + 'px';
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round((state.room.h + 2 * M) * base * dpr);
+  }
+  function X(f) { return (M + f) * S; }
+  function Y(f) { return (M + f) * S; }
+  function evtToFt(e) {
+    var r = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - r.left) / r.width * (state.room.w + 2 * M) - M,
+      y: (e.clientY - r.top) / r.height * (state.room.h + 2 * M) - M
+    };
+  }
+
+  /* ---------------- drawing ---------------- */
+  function draw(exportCtx, expScale) {
+    var c = exportCtx || ctx, s = expScale || S;
+    var W = (state.room.w + 2 * M) * s, H = (state.room.h + 2 * M) * s;
+    function XX(f) { return (M + f) * s; }
+    function YY(f) { return (M + f) * s; }
+
+    c.clearRect(0, 0, W, H);
+    c.fillStyle = '#0B2138';
+    c.fillRect(0, 0, W, H);
+
+    /* heatmap under everything */
+    if (state.showHeat && !exportCtx) {
+      var hm = nsHeatmapGrid(state.items, state.room, 0.5);
+      for (var r = 0; r < hm.rows; r++) {
+        for (var q = 0; q < hm.cols; q++) {
+          var v = hm.values[r][q];
+          if (v < 0.999) {
+            c.fillStyle = 'rgba(255,107,107,' + ((1 - v) * 0.55).toFixed(3) + ')';
+            c.fillRect(XX(q * hm.cell), YY(r * hm.cell), hm.cell * s + 1, hm.cell * s + 1);
+          }
+        }
+      }
+    }
+
+    /* grid */
+    if (state.showGrid) {
+      c.strokeStyle = 'rgba(127,212,255,0.10)';
+      c.lineWidth = 1;
+      c.beginPath();
+      for (var gx = 0; gx <= state.room.w + 0.001; gx += 1) { c.moveTo(XX(gx), YY(0)); c.lineTo(XX(gx), YY(state.room.h)); }
+      for (var gy = 0; gy <= state.room.h + 0.001; gy += 1) { c.moveTo(XX(0), YY(gy)); c.lineTo(XX(state.room.w), YY(gy)); }
+      c.stroke();
+    }
+
+    /* room floor */
+    c.fillStyle = '#10304F';
+    c.fillRect(XX(0), YY(0), state.room.w * s, state.room.h * s);
+
+    /* walls */
+    c.strokeStyle = '#7FD4FF';
+    c.lineWidth = Math.max(2, s * 0.08);
+    c.strokeRect(XX(0), YY(0), state.room.w * s, state.room.h * s);
+
+    /* doors: wall gap + swing arc */
+    state.doors.forEach(function (d) {
+      var hw = (d.width || 3) / 2;
+      c.strokeStyle = '#0B2138';
+      c.lineWidth = Math.max(4, s * 0.14);
+      c.beginPath();
+      if (d.wall === 'N') { c.moveTo(XX(d.at - hw), YY(0)); c.lineTo(XX(d.at + hw), YY(0)); }
+      if (d.wall === 'S') { c.moveTo(XX(d.at - hw), YY(state.room.h)); c.lineTo(XX(d.at + hw), YY(state.room.h)); }
+      if (d.wall === 'W') { c.moveTo(XX(0), YY(d.at - hw)); c.lineTo(XX(0), YY(d.at + hw)); }
+      if (d.wall === 'E') { c.moveTo(XX(state.room.w), YY(d.at - hw)); c.lineTo(XX(state.room.w), YY(d.at + hw)); }
+      c.stroke();
+      if (d.swing !== 'out') {
+        var h = nsDoorHinge(d, state.room), rr = (d.width || 3) * s;
+        c.strokeStyle = '#FF6B6B';
+        c.lineWidth = Math.max(1.5, s * 0.04);
+        c.setLineDash([6, 5]);
+        c.beginPath();
+        if (d.wall === 'N') c.arc(XX(h.x), YY(h.y), rr, 0, Math.PI / 2);
+        if (d.wall === 'S') c.arc(XX(h.x), YY(h.y), rr, Math.PI, Math.PI * 1.5);
+        if (d.wall === 'W') c.arc(XX(h.x), YY(h.y), rr, Math.PI / 2, Math.PI);
+        if (d.wall === 'E') c.arc(XX(h.x), YY(h.y), rr, Math.PI / 2, Math.PI);
+        c.stroke();
+        c.setLineDash([]);
+        c.fillStyle = '#FF6B6B';
+        c.beginPath(); c.arc(XX(h.x), YY(h.y), Math.max(2.5, s * 0.09), 0, 7); c.fill();
+      }
+    });
+
+    /* dimensions */
+    c.fillStyle = '#7FD4FF';
+    c.font = '600 ' + Math.max(11, s * 0.42) + 'px system-ui, sans-serif';
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(state.room.w + ' ft', XX(state.room.w / 2), YY(0) - s * 0.45);
+    c.save();
+    c.translate(XX(0) - s * 0.5, YY(state.room.h / 2));
+    c.rotate(-Math.PI / 2);
+    c.fillText(state.room.h + ' ft', 0, 0);
+    c.restore();
+
+    /* furniture (rugs first, under everything) */
+    var ordered = state.items.slice().sort(function (a, b) {
+      return (nsIsRug(a) ? 0 : 1) - (nsIsRug(b) ? 0 : 1);
+    });
+    var viol = nsClearanceViolations(state.items, state.room, state.doors);
+    var hot = {};
+    viol.forEach(function (v) { if (v.severity === 'high') v.items.forEach(function (id) { hot[id] = true; }); });
+
+    ordered.forEach(function (it) {
+      var t = typeByName[it.type] || { color: '#7FD4FF' };
+      var isRug = nsIsRug(it);
+      c.fillStyle = isRug ? 'rgba(127,212,255,0.13)' : t.color;
+      if (!isRug) { c.globalAlpha = 0.92; }
+      c.fillRect(XX(it.x), YY(it.y), it.w * s, it.h * s);
+      c.globalAlpha = 1;
+      c.setLineDash(isRug ? [7, 5] : []);
+      c.strokeStyle = isRug ? 'rgba(127,212,255,0.75)' : 'rgba(6,20,35,0.55)';
+      c.lineWidth = Math.max(1.5, s * 0.045);
+      c.strokeRect(XX(it.x), YY(it.y), it.w * s, it.h * s);
+      c.setLineDash([]);
+
+      /* label */
+      var fs = Math.max(10, Math.min(15, s * 0.42));
+      c.fillStyle = isRug ? '#9ADCFF' : '#0B2138';
+      c.font = '700 ' + fs + 'px system-ui, sans-serif';
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      var cxp = XX(it.x + it.w / 2), cyp = YY(it.y + it.h / 2);
+      var label = it.label;
+      if (c.measureText(label).width > it.w * s - 8 && label.indexOf(' ') > 0) {
+        label = label.split(' ')[0];
+      }
+      c.fillText(label, cxp, cyp - fs * 0.35);
+      c.font = '500 ' + Math.max(9, fs - 3) + 'px system-ui, sans-serif';
+      c.fillStyle = isRug ? 'rgba(154,220,255,0.8)' : 'rgba(11,33,56,0.75)';
+      c.fillText(it.w + '×' + it.h + ' ft', cxp, cyp + fs * 0.55);
+
+      if (hot[it.id]) {
+        c.strokeStyle = '#FF6B6B';
+        c.lineWidth = Math.max(2.5, s * 0.07);
+        c.setLineDash([8, 5]);
+        c.strokeRect(XX(it.x) - 3, YY(it.y) - 3, it.w * s + 6, it.h * s + 6);
+        c.setLineDash([]);
+      }
+      if (state.selected === it.id && !exportCtx) {
+        c.strokeStyle = '#7FD4FF';
+        c.lineWidth = Math.max(2.5, s * 0.07);
+        c.strokeRect(XX(it.x) - 3, YY(it.y) - 3, it.w * s + 6, it.h * s + 6);
+      }
+    });
+  }
+
+  /* ---------------- panels ---------------- */
+  function renderViolations() {
+    var box = document.getElementById('violations');
+    var viol = nsClearanceViolations(state.items, state.room, state.doors);
+    if (!viol.length) {
+      box.innerHTML = '<div class="chip-ok rounded-lg px-3 py-2.5 font-medium">No layout mistakes found — this plan follows standard clearance rules.</div>';
+      return;
+    }
+    box.innerHTML = viol.map(function (v) {
+      var chip = v.severity === 'high' ? 'chip-high' : 'chip-medium';
+      var tag = v.severity === 'high' ? 'HIGH' : 'MEDIUM';
+      return '<div class="rounded-lg px-3 py-2.5 border border-slate-600/40 bg-slate-800/40">' +
+        '<span class="' + chip + ' text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-full">' + tag + '</span>' +
+        '<p class="mt-1.5 text-slate-200">' + v.message + '</p></div>';
+    }).join('');
+  }
+
+  function renderRug() {
+    var box = document.getElementById('rug-card');
+    var rec = nsRecommendRug(state.items, state.room);
+    var html = '<p class="text-slate-200">Recommended rug: <strong class="cyan-text text-base">' +
+      rec.width + ' &times; ' + rec.length + ' ft</strong></p>' +
+      '<p class="text-slate-400">' + rec.note + '</p>';
+    if (rec.existingRugNote) html += '<p class="text-slate-300">' + rec.existingRugNote + '</p>';
+    html += '<button id="btn-addrug" class="mt-1 px-3 py-1.5 rounded-lg text-sm font-semibold" style="background:#7FD4FF;color:#0B2138">Add this rug to the plan</button>';
+    box.innerHTML = html;
+    document.getElementById('btn-addrug').addEventListener('click', function () {
+      state.items = state.items.filter(function (i) { return !nsIsRug(i); });
+      state.items.push({
+        id: 'it' + (state.nextId++), type: 'rug', label: 'Rug',
+        w: rec.width, h: rec.length,
+        x: nsSnap((state.room.w - rec.width) / 2), y: nsSnap((state.room.h - rec.length) / 2)
+      });
+      refresh();
+    });
+  }
+
+  function renderOpenness() {
+    var score = nsOpennessScore(state.items, state.room);
+    document.getElementById('openness-num').textContent = score;
+    document.getElementById('openness-bar').style.width = score + '%';
+    document.getElementById('openness-label').textContent = nsOpennessLabel(score);
+  }
+
+  function renderSelEditor() {
+    var ed = document.getElementById('sel-editor');
+    var it = getItem(state.selected);
+    if (!it) { ed.classList.add('hidden'); return; }
+    ed.classList.remove('hidden');
+    document.getElementById('sel-name').textContent = it.label;
+    document.getElementById('sel-w').value = it.w;
+    document.getElementById('sel-h').value = it.h;
+  }
+
+  function refresh() { draw(); renderViolations(); renderRug(); renderOpenness(); renderSelEditor(); }
+
+  /* ---------------- drag & drop ---------------- */
+  var drag = null;
+  function hitTest(p) {
+    var solid = state.items.filter(function (i) { return !nsIsRug(i); });
+    var rugs = state.items.filter(nsIsRug);
+    var pools = [solid, rugs];
+    for (var k = 0; k < pools.length; k++) {
+      var pool = pools[k];
+      for (var i = pool.length - 1; i >= 0; i--) {
+        var it = pool[i];
+        if (p.x >= it.x - 0.15 && p.x <= it.x + it.w + 0.15 &&
+            p.y >= it.y - 0.15 && p.y <= it.y + it.h + 0.15) return it;
+      }
+    }
+    return null;
+  }
+  canvas.addEventListener('pointerdown', function (e) {
+    var p = evtToFt(e);
+    var it = hitTest(p);
+    if (it) {
+      state.selected = it.id;
+      drag = { id: it.id, dx: it.x - p.x, dy: it.y - p.y, moved: false };
+      canvas.classList.add('dragging');
+      canvas.setPointerCapture(e.pointerId);
+    } else {
+      state.selected = null;
+    }
+    refresh();
+  });
+  canvas.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    var it = getItem(drag.id);
+    if (!it) return;
+    var p = evtToFt(e);
+    var nx = nsSnap(p.x + drag.dx), ny = nsSnap(p.y + drag.dy);
+    if (nx !== it.x || ny !== it.y) drag.moved = true;
+    var clamped = nsClampToRoom({ id: it.id, type: it.type, label: it.label, w: it.w, h: it.h, x: nx, y: ny }, state.room);
+    it.x = clamped.x; it.y = clamped.y;
+    refresh();
+  });
+  function endDrag() { drag = null; canvas.classList.remove('dragging'); refresh(); }
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+  document.addEventListener('keydown', function (e) {
+    if ((e.key === 'Delete' || e.key === 'Backspace') && state.selected && document.activeElement.tagName !== 'INPUT') {
+      state.items = state.items.filter(function (i) { return i.id !== state.selected; });
+      state.selected = null;
+      refresh();
+    }
+  });
+
+  /* ---------------- controls ---------------- */
+  document.getElementById('apply-room').addEventListener('click', function () {
+    var w = parseFloat(document.getElementById('room-w').value);
+    var h = parseFloat(document.getElementById('room-h').value);
+    if (!isFinite(w) || !isFinite(h) || w < 4 || h < 4 || w > 60 || h > 60) {
+      showMsg('Please enter room dimensions between 4 and 60 feet.');
+      return;
+    }
+    state.room = { w: Math.round(w * 2) / 2, h: Math.round(h * 2) / 2 };
+    state.doors.forEach(function (d) {
+      var L = wallLen(d.wall), hw = (d.width || 3) / 2;
+      d.at = Math.min(Math.max(d.at, hw), L - hw);
+    });
+    state.items = state.items.map(function (it) { return nsClampToRoom(it, state.room); });
+    fitCanvas(); renderDoors(); refresh();
+  });
+  document.getElementById('room-preset').addEventListener('change', function (e) {
+    if (!e.target.value) return;
+    var parts = e.target.value.split('x');
+    document.getElementById('room-w').value = parts[0];
+    document.getElementById('room-h').value = parts[1];
+    document.getElementById('apply-room').click();
+    e.target.value = '';
+  });
+
+  /* doors */
+  function renderDoors() {
+    var box = document.getElementById('door-list');
+    box.innerHTML = '';
+    var walls = [['N', 'Top wall'], ['S', 'Bottom wall'], ['W', 'Left wall'], ['E', 'Right wall']];
+    state.doors.forEach(function (d, idx) {
+      var L = wallLen(d.wall), hw = (d.width || 3) / 2;
+      d.at = Math.min(Math.max(d.at, hw), L - hw);
+      var row = document.createElement('div');
+      row.className = 'flex flex-wrap items-center gap-2 text-sm p-2 rounded-lg border border-cyan-300/20 bg-cyan-300/5';
+      var opts = walls.map(function (w) {
+        return '<option value="' + w[0] + '"' + (d.wall === w[0] ? ' selected' : '') + '>' + w[1] + '</option>';
+      }).join('');
+      row.innerHTML =
+        '<select data-k="wall" class="!py-1 text-xs">' + opts + '</select>' +
+        '<label class="text-xs text-slate-400">Position <input data-k="at" type="range" min="' + hw + '" max="' + (L - hw) + '" step="0.5" value="' + d.at + '" class="w-24 align-middle"></label>' +
+        '<span class="text-xs cyan-text w-14" data-k="atlabel">' + d.at + ' ft</span>' +
+        '<select data-k="width" class="!py-1 text-xs">' +
+          [2.5, 3, 3.5].map(function (wd) { return '<option value="' + wd + '"' + (d.width === wd ? ' selected' : '') + '>' + wd + ' ft</option>'; }).join('') + '</select>' +
+        '<select data-k="swing" class="!py-1 text-xs">' +
+          '<option value="in"' + (d.swing !== 'out' ? ' selected' : '') + '>Swings in</option>' +
+          '<option value="out"' + (d.swing === 'out' ? ' selected' : '') + '>Swings out</option></select>' +
+        '<button data-k="del" class="text-xs px-2 py-1 rounded border border-red-400/50 text-red-300">Remove</button>';
+      row.querySelector('[data-k=wall]').addEventListener('change', function (e) {
+        d.wall = e.target.value; renderDoors(); refresh();
+      });
+      row.querySelector('[data-k=at]').addEventListener('input', function (e) {
+        d.at = parseFloat(e.target.value);
+        row.querySelector('[data-k=atlabel]').textContent = d.at + ' ft';
+        refresh();
+      });
+      row.querySelector('[data-k=width]').addEventListener('change', function (e) {
+        d.width = parseFloat(e.target.value); renderDoors(); refresh();
+      });
+      row.querySelector('[data-k=swing]').addEventListener('change', function (e) {
+        d.swing = e.target.value; refresh();
+      });
+      row.querySelector('[data-k=del]').addEventListener('click', function () {
+        state.doors.splice(idx, 1); renderDoors(); refresh();
+      });
+      box.appendChild(row);
+    });
+  }
+  document.getElementById('add-door').addEventListener('click', function () {
+    state.doors.push({ wall: 'N', at: state.room.w / 2, width: 3, swing: 'in' });
+    renderDoors(); refresh();
+  });
+
+  /* furniture palette */
+  function renderPalette() {
+    var box = document.getElementById('furniture-palette');
+    TYPES.forEach(function (t) {
+      var b = document.createElement('button');
+      b.className = 'text-xs font-semibold px-3 py-2 rounded-lg border border-cyan-300/30 hover:bg-cyan-300/10 text-slate-100';
+      b.innerHTML = '<span class="inline-block w-2.5 h-2.5 rounded-sm mr-1.5 align-baseline" style="background:' + t.color + '"></span>' +
+        t.label + ' <span class="text-slate-400 font-normal">' + t.w + '×' + t.h + '</span>';
+      b.addEventListener('click', function () {
+        var id = 'it' + (state.nextId++);
+        var it = {
+          id: id, type: t.type, label: t.label, w: t.w, h: t.h,
+          x: nsSnap((state.room.w - t.w) / 2), y: 0
+        };
+        it.y = nsSnap((state.room.h - t.h) / 2);
+        state.items.push(nsClampToRoom(it, state.room));
+        state.selected = id;
+        refresh();
+      });
+      box.appendChild(b);
+    });
+  }
+
+  /* selected editor */
+  document.getElementById('sel-apply').addEventListener('click', function () {
+    var it = getItem(state.selected);
+    if (!it) return;
+    var w = parseFloat(document.getElementById('sel-w').value);
+    var h = parseFloat(document.getElementById('sel-h').value);
+    if (!isFinite(w) || !isFinite(h) || w < 0.5 || h < 0.5 || w > 40 || h > 40) {
+      showMsg('Enter a width and length between 0.5 and 40 feet.');
+      return;
+    }
+    it.w = Math.round(w * 10) / 10; it.h = Math.round(h * 10) / 10;
+    var c = nsClampToRoom(it, state.room);
+    it.x = c.x; it.y = c.y;
+    refresh();
+  });
+  document.getElementById('sel-center').addEventListener('click', function () {
+    var it = getItem(state.selected);
+    if (!it) return;
+    it.x = nsSnap((state.room.w - it.w) / 2);
+    it.y = nsSnap((state.room.h - it.h) / 2);
+    refresh();
+  });
+  document.getElementById('sel-delete').addEventListener('click', function () {
+    state.items = state.items.filter(function (i) { return i.id !== state.selected; });
+    state.selected = null;
+    refresh();
+  });
+
+  /* toggles */
+  document.getElementById('tgl-grid').addEventListener('change', function (e) { state.showGrid = e.target.checked; draw(); });
+  document.getElementById('tgl-heat').addEventListener('change', function (e) { state.showHeat = e.target.checked; draw(); });
+
+  /* plan actions */
+  document.getElementById('btn-export').addEventListener('click', function () {
+    var W = 1600, s = W / (state.room.w + 2 * M), H = Math.round((state.room.h + 2 * M) * s);
+    var off = document.createElement('canvas');
+    off.width = W; off.height = H;
+    var octx = off.getContext('2d');
+    octx.fillStyle = '#0B2138'; octx.fillRect(0, 0, W, H);
+    draw(octx, s);
+    /* caption bar */
+    var score = nsOpennessScore(state.items, state.room);
+    octx.fillStyle = '#0B2138'; octx.fillRect(0, H - 64, W, 64);
+    octx.fillStyle = '#7FD4FF'; octx.font = '700 26px system-ui, sans-serif'; octx.textAlign = 'left';
+    octx.fillText('NestSketch room plan — ' + state.room.w + ' × ' + state.room.h + ' ft', 24, H - 36);
+    octx.fillStyle = '#EAF6FF'; octx.font = '500 22px system-ui, sans-serif'; octx.textAlign = 'right';
+    octx.fillText('Openness: ' + score + '% free floor', W - 24, H - 36);
+    var a = document.createElement('a');
+    a.download = 'nestsketch-room-plan.png';
+    a.href = off.toDataURL('image/png');
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+  document.getElementById('btn-save').addEventListener('click', function () {
+    try {
+      localStorage.setItem('nestsketch-plan-v1', JSON.stringify({ room: state.room, items: state.items, doors: state.doors }));
+      showMsg('Plan saved in this browser.');
+    } catch (err) { showMsg('Could not save the plan in this browser.'); }
+  });
+  document.getElementById('btn-load').addEventListener('click', function () {
+    try {
+      var raw = localStorage.getItem('nestsketch-plan-v1');
+      if (!raw) { showMsg('No saved plan found in this browser yet.'); return; }
+      var p = JSON.parse(raw);
+      if (!p || !p.room || !p.items) { showMsg('The saved plan looks damaged — starting fresh.'); return; }
+      state.room = p.room; state.items = p.items; state.doors = p.doors || [];
+      state.selected = null;
+      document.getElementById('room-w').value = p.room.w;
+      document.getElementById('room-h').value = p.room.h;
+      fitCanvas(); renderDoors(); refresh();
+      showMsg('Saved plan loaded.');
+    } catch (err) { showMsg('Could not load the saved plan.'); }
+  });
+  document.getElementById('btn-reset').addEventListener('click', function () {
+    state = defaultState();
+    document.getElementById('room-w').value = 14;
+    document.getElementById('room-h').value = 12;
+    fitCanvas(); renderDoors(); refresh();
+  });
+
+  /* ---------------- init ---------------- */
+  renderPalette();
+  renderDoors();
+  fitCanvas();
+  refresh();
+  window.addEventListener('resize', function () { fitCanvas(); draw(); });
+})();
+</script>
+</body>
+</html>
